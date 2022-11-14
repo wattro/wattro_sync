@@ -1,2 +1,6 @@
 venv
+.mypy_cache
 .idea
+/wattro_sync.egg-info/
+/build/
+__pycache__/

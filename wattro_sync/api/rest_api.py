@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import abc
 import json
+import logging
 import urllib.error
 import urllib.parse
 import urllib.request
+
+import requests
 
 
 class RESTApi(abc.ABC):
@@ -27,31 +30,42 @@ class RESTApi(abc.ABC):
         return getattr(self, "base_waittime", 3.0)
 
     def _request(
-            self,
-            method: str,
-            url: str,
-            *,
-            custom_header: dict | None = None,
-            data: dict | None = None,
+        self,
+        method: str,
+        url: str,
+        *,
+        custom_header: dict | None = None,
+        data: dict | None = None,
+        params: dict | None = None,
     ) -> dict:
         header = self._get_headers()
         if custom_header:
             header.update(custom_header)
-        req = urllib.request.Request(url=url, method=method, headers=header, data=data)
-        resp = urllib.request.urlopen(req)
-        data = json.loads(resp.read().decode("utf-8"))
-        return data or {}
+        parsed_data = None
+        if data is not None:
+            parsed_data = json.dumps(data)
+            header.update({"Content-Type": "application/json"})
+        res = requests.request(
+            method=method,
+            url=url,
+            data=parsed_data,
+            params=params,
+            headers=header,
+            timeout=20,
+        )
+        if res.ok:
+            return res.json()
+        logging.error("%s Request to %s Failed", method, url)
+        logging.error("%s: %s", res.status_code, res.content)
+        raise ConnectionError()
 
-    def _url(self, path: str, params: dict | None = None) -> str:
-        param_str = ""
-        if params is not None:
-            param_str = "&".join(f"{key}={val}" for key, val in params.items())
+    def _url(self, path: str) -> str:
         return urllib.parse.urlunparse(
-            (self._get_protocol(), self._get_hostname(), path, None, param_str, None)
+            (self._get_protocol(), self._get_hostname(), path, None, None, None)
         )
 
     def _get(self, path: str, params: dict | None = None) -> dict:
-        return self._request(method="GET", url=self._url(path, params))
+        return self._request(method="GET", url=self._url(path), params=params)
 
     def _post(self, path: str, data: dict) -> dict:
         return self._request(method="POST", data=data, url=self._url(path))
@@ -68,17 +82,26 @@ class WattroNodeApi(RESTApi):
         self.headers = {"Authorization": f"Api-Key {api_key}"}
 
     def _get(self, path: str, params: dict | None = None) -> dict:
-        path = path.strip('/') + '/'
+        path = path.strip("/") + "/"
         return super()._get(path, params)
 
     def get_ref_url(self) -> str:
         return self._url("healthchecks/")
 
     def get_health(self) -> dict:
-        return self._get("healthchecks")
+        return self._get("healthchecks/")
 
     def get_assets(self, params: dict | None = None) -> dict:
         return self._get("node/asset/", params)
+
+    def get_idents(self, target: str) -> list[str]:
+        res = self._get(f"/sync/{target}/get_idents/")
+        if "idents" not in res:
+            raise RuntimeError(f"Unexpected API Result {res}")
+        idents = res["idents"]
+        if not isinstance(idents, list):
+            RuntimeError(f"Expected list from Wattro API got {idents!r}")
+        return idents
 
     def get_fields(self, path: str) -> dict:
         res = self._request(method="OPTIONS", url=self._url(path))
@@ -99,3 +122,11 @@ class WattroNodeApi(RESTApi):
                 f"Not allowed to connect to {api.get_ref_url()!r}: {health}"
             )
         return api
+
+    def bulk_create(self, target: str, new_target_data: list[dict]) -> None:
+        self._post(f"/sync/{target}/bulk/", data={"new_data": new_target_data})
+
+    def update_by_ident(self, target: str, new_target_data: dict) -> None:
+        self._post(
+            f"/sync/{target}/update_by_ident/", data={"new_data": new_target_data}
+        )

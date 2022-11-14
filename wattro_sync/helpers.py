@@ -1,6 +1,38 @@
+import logging
 from typing import overload, Literal
 
-from simple_term_menu import TerminalMenu
+
+class StupidTerminalChoice:
+    def __init__(self, menu_entries: list, **kwargs):
+        self.menu_entries = menu_entries
+        self.kwargs = kwargs
+
+    def _is_multi(self) -> bool:
+        key = "multi_select"
+        return self.kwargs.get(key, False)
+
+    def show(self) -> int | tuple[int, ...] | None:
+        print(f"\n\n##\n {self.kwargs.get('title', 'Auswahl:')}")
+        print("[q]\t keins davon")
+        for i, entry in enumerate(self.menu_entries):
+            print(f"[{i}]\t {entry}")
+        if self._is_multi():
+            choices = input("Auswahl (etwa 0 2 3):\n").split(" ")
+            if len(choices) == 1 and choices[0] == "q":
+                return None
+            return tuple(int(x) for x in choices if x != "")
+        # else
+        choice = input("Auswahl (etwa 0)\n").strip()
+        if choice == "q":
+            return None
+        return int(choice)
+
+
+try:
+    from simple_term_menu import TerminalMenu
+except NotImplementedError as platform_err:
+    TerminalMenu = StupidTerminalChoice
+    logging.warning(f"{platform_err} - falling back to {TerminalMenu!r}")
 
 from wattro_sync.api.api_mapping import ApiNameToStructureMapping
 
@@ -27,7 +59,6 @@ def multi_select(
     menu_entries: list[str], required: bool = False, **kwargs
 ) -> None | tuple[int]:
     is_multi = kwargs.pop("multi_select", True)
-    assert is_multi, "Deprecated. Use select instead."
     res = _select(menu_entries, is_multi, required, **kwargs)
     if isinstance(res, int):
         raise RuntimeError("Failed to parse mutli select", res)
@@ -46,7 +77,6 @@ def select(menu_entries: list[str], required: Literal[False], **kwargs) -> None 
 
 def select(menu_entries: list[str], required: bool = False, **kwargs) -> None | int:
     is_multi = kwargs.pop("multi_select", False)
-    assert not is_multi, "Deprecated. Use multi_select instead."
     res = _select(menu_entries, is_multi, required, **kwargs)
     if isinstance(res, tuple):
         raise RuntimeError("Failed to parse single value", res)

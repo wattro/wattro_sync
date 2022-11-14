@@ -3,7 +3,10 @@ import argparse
 import logging
 import pathlib
 
-from wattro_sync.config_reader.types import ConnectionStructure
+import wattro_sync.config_reader.access
+import wattro_sync.file_access.read_write
+from wattro_sync.api.mail import MailApi
+from wattro_sync.config_reader.types import SyncCfg, MailCfg
 from wattro_sync.helpers import (
     SOURCE_CHOICES,
     TARGET_NODE_MAPPING,
@@ -21,15 +24,19 @@ def main() -> int:
     args = parse_args()
     if args.v:
         logging.basicConfig(level=logging.INFO)
-    cfg_existed = cfg_access.exists()
-    cfg = cfg_access.get_or_create()
+    cfg_existed = wattro_sync.file_access.read_write.exists("cfg")
+    cfg = wattro_sync.config_reader.access.get_or_create()
     wattro_api = None
     if not cfg_existed:
         wattro_api = get_wattro_api_or_none(cfg)
         if wattro_api is None:
             logging.info("Lösche potentiell fehlerhafte Konfiguration")
-            cfg_access.rm()
+            wattro_sync.file_access.read_write.cfg_rm()
             return -1
+        if select(
+            ["nein", "ja"], required=True, title="E-Mail Benachrichtigung einrichten?"
+        ):
+            setup_mail_cfg(cfg)
 
     logging.info("Erzeuge Konfiguration für %s -> %s", args.source, args.target)
     api_struct: ApiStructure = ApiNameToStructureMapping[args.source]
@@ -49,26 +56,29 @@ def main() -> int:
         )
         return -1
 
-    con_struct = ConnectionStructure(
-        connection_type=args.source,
-        connection_info=connection_info_class,
+    cfg_access.write_basic_connection(
+        args.target, connection_type=args.source, sync_info=connection_info_class
     )
-    cfg_access.write_connection_structure(args.target, con_struct)
     logging.info("Verbindungsdaten wurden gespeichert.")
 
     if wattro_api is None:
         wattro_api = get_wattro_api_or_none(cfg)
-        if wattro_api is None:
-            return -1
+    if wattro_api is None:
+        return -1
 
     raw_fields = wattro_api.get_fields(TARGET_NODE_MAPPING[args.target])
 
-    field_mapping = {}
+    field_mapping: dict[str, dict[str, None | int | str]] = {}
 
-    src_fields = connection_info_class.table_info.fields
+    src_fields = connection_info_class.collection_info.fields
     for key, value in raw_fields.items():
         if value.get("read_only", True):
-            logging.info("Überspringe 'read only' Feld %s; %s", key, value)
+            logging.info("Überspringe 'read_path only' Feld %s; %s", key, value)
+            continue
+        if key == "human_id":
+            ident = connection_info_class.collection_info.ident
+            logging.info(f"Setze 'human_id' auf {ident!r}")
+            field_mapping[key] = {**value, "src": _make_cfg_field(ident)}
             continue
         field_mapping[key] = {**value, "src": select_src(key, src_fields, value)}
 
@@ -118,12 +128,12 @@ def _select_one(key: str, src_fields: list[str], value: dict) -> str | None:
 
 def _skip_text(required: bool) -> str:
     if required:
-        return "\t(Überspringen: q)"
-    return ""
+        return "\t(Pflichtfeld)"
+    return "\t(Überspringen: q)"
 
 
 def _make_cfg_field(field_name: str) -> str:
-    return "{src['" + field_name + "']}"
+    return "{" + field_name + "}"
 
 
 def get_wattro_api_or_none(cfg) -> WattroNodeApi | None:
@@ -176,9 +186,61 @@ def setup_sqlite() -> SQLiteSyncInfo:
             title="Primärschlüssel (Feld, welches den Datensatz eindeutig identifiziert)",
         )
     ]
-    return SQLiteSyncInfo(
+
+    sync_info = SQLiteSyncInfo(
         db_path, CollectionInfo(table_name, field_choices, identifier)
     )
+
+    api = SQLiteApi(sync_info)
+    res = api.get_new([])
+    known_identifiers: dict[str, list[dict]] = dict()
+    dups = list()
+    for data in res:
+        ident = data[identifier]
+        if ident in known_identifiers:
+            dups.append(ident)
+            known_identifiers[ident].append(data)
+        else:
+            known_identifiers[ident] = [data]
+
+    if dups:
+        for dup in dups:
+            logging.error("Ambigious Identifier: %s", dup)
+            for dat in known_identifiers[dup]:
+                logging.info("\t%s", dat)
+        raise RuntimeError(f"{len(dups)} ambigious identifiers: {dups}.")
+    return sync_info
+
+
+def setup_mail_cfg(cfg: SyncCfg) -> None:
+    """setup mail cfg, store it to file and cfg obj"""
+    log_level_choices = {
+        "Bei jedem Aufruf.": logging.DEBUG,
+        "Wenn versucht wurde Daten zu schreiben.": logging.INFO,
+        "Wenn Daten nicht geschrieben werden konnten.": logging.WARNING,
+    }
+
+    choice_idx = select(
+        list(log_level_choices.keys()),
+        required=True,
+        title="Wann soll eine Mail gesendet werden?",
+    )
+    log_level = list(log_level_choices.values())[choice_idx]
+
+    mail_cfg = MailCfg(
+        api_key=input("Sendgrid Api-Key:\t"),
+        to_emails=input("Empfänger E-Mail:\t"),
+        log_level=log_level,
+    )
+    mail_api = MailApi(mail_cfg)
+    if mail_api.send_registered():
+        cfg.mail_cfg = mail_cfg
+        cfg_access.write_mail_cfg(mail_cfg)
+        logging.info(
+            "Aktivierungs Mail erfolgreich verschickt und Konfiguration gespeichert."
+        )
+    else:
+        logging.error("Mail Konfiguration verworfen.")
 
 
 def parse_args() -> argparse.Namespace:

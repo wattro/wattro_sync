@@ -1,6 +1,6 @@
 import setuptools
 
-with open("README.md", 'r') as fh:
+with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
@@ -13,5 +13,6 @@ setuptools.setup(
     author="Wattro GmbH",
     author_email="admin@wattro.de",
     packages=setuptools.find_packages(),
-    license="MIT License"
+    license="MIT License",
+    install_requires=["requests", "sendgrid", "simple-term-menu", "pyodbc"],
 )

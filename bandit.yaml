@@ -1,0 +1,3 @@
+skips: [
+  "B608", # allow string concat for DB access.
+]
