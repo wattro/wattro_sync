@@ -4,3 +4,4 @@ venv
 /wattro_sync.egg-info/
 /build/
 __pycache__/
+dist/

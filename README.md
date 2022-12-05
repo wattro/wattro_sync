@@ -10,7 +10,7 @@ erleichtern.
 
 ## Installation
 
-* `pip install wattro_sync`
+* `pip install wattro-sync`
 
 ## Anwendung
 
@@ -58,13 +58,22 @@ werden.
 
 # Development
 
-Pre Commit tooling
+## Pre Commit tooling
 
 ```bash
+# requires black, mypy and bandit to be installed (via pip)
+# none of the following commands should produce output on the second run.
 # lint
-black wattro_sync
+black wattro_sync -q
 # search for typing issues
-mypy wattro_sync
+mypy wattro_sync --no-error-summary --config-file mypy.ini
 # search for common issues
 bandit -r wattro_sync -c bandit.yaml -q
+```
+
+## Build
+```bash
+# requires build and twine to be installed (via pip)
+python -m build
+twine upload dist/*
 ```
