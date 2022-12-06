@@ -2,10 +2,12 @@
 import argparse
 import logging
 import pathlib
+import typing
 
 import wattro_sync.config_reader.access
 import wattro_sync.file_access.read_write
 from wattro_sync.api.mail import MailApi
+from wattro_sync.api.mosaik_api import MosaikSyncInfo, MosaikConInfo
 from wattro_sync.config_reader.types import SyncCfg, MailCfg
 from wattro_sync.helpers import (
     SOURCE_CHOICES,
@@ -15,79 +17,98 @@ from wattro_sync.helpers import (
 )
 from .api.api_mapping import ApiNameToStructureMapping, ApiStructure
 from .api.rest_api import WattroNodeApi
-from .api.sqlite_api import SQLiteSyncInfo, SQLiteApi
-from .api.src_cli import CollectionInfo
+from .api.sqlite_api import SQLiteSyncInfo
+from .api.src_cli import CollectionInfo, SrcCli, SyncInfo
 from .config_reader import access as cfg_access
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO)
     args = parse_args()
-    if args.v:
-        logging.basicConfig(level=logging.INFO)
-    cfg_existed = wattro_sync.file_access.read_write.exists("cfg")
-    cfg = wattro_sync.config_reader.access.get_or_create()
-    wattro_api = None
-    if not cfg_existed:
-        wattro_api = get_wattro_api_or_none(cfg)
-        if wattro_api is None:
-            logging.info("Lösche potentiell fehlerhafte Konfiguration")
+    try:
+        cfg, wattro_api = retrive_cfg_and_wattro_api()
+    except ConnectionError as c_err:
+        logging.critical("Verbinundgsfehler: %s", c_err)
+        if select(["nein", "ja"], required=True, title="Konfiguration löschen?"):
+            logging.info("Lösche Konfigurationsdatei.")
             wattro_sync.file_access.read_write.cfg_rm()
-            return -1
-        if select(
-            ["nein", "ja"], required=True, title="E-Mail Benachrichtigung einrichten?"
-        ):
-            setup_mail_cfg(cfg)
+        return -1
 
     logging.info("Erzeuge Konfiguration für %s -> %s", args.source, args.target)
-    api_struct: ApiStructure = ApiNameToStructureMapping[args.source]
-    if api_struct.connection_info == SQLiteSyncInfo:
-        connection_info_class = setup_sqlite()
-    else:
-        raise NotImplementedError(f"TODO {api_struct}")
-
-    logging.info("Prüfe '%s' Verfügbarkeit.", args.source)
     try:
-        _api = api_struct.api.get_healthy_connection(connection_info_class)
-    except Exception as err:
+        api_struct: ApiStructure = ApiNameToStructureMapping[args.source]
+        collection_info = write_source_connection_and_get_info(api_struct, args)
+    except KeyError:
+        return -1
+    except NotImplementedError:
         logging.critical(
-            "Verbindung zu %s fehlgeschlagen: %s. Konfiguration wurde nicht gespeichert",
-            args.source,
-            err,
+            "Automatisches Erzeugen dieser Schnittstelle nicht implementiert."
         )
         return -1
 
-    cfg_access.write_basic_connection(
-        args.target, connection_type=args.source, sync_info=connection_info_class
-    )
-    logging.info("Verbindungsdaten wurden gespeichert.")
-
-    if wattro_api is None:
-        wattro_api = get_wattro_api_or_none(cfg)
-    if wattro_api is None:
-        return -1
-
-    raw_fields = wattro_api.get_fields(TARGET_NODE_MAPPING[args.target])
-
-    field_mapping: dict[str, dict[str, None | int | str]] = {}
-
-    src_fields = connection_info_class.collection_info.fields
-    for key, value in raw_fields.items():
-        if value.get("read_only", True):
-            logging.info("Überspringe 'read_path only' Feld %s; %s", key, value)
-            continue
-        if key == "human_id":
-            ident = connection_info_class.collection_info.ident
-            logging.info(f"Setze 'human_id' auf {ident!r}")
-            field_mapping[key] = {**value, "src": _make_cfg_field(ident)}
-            continue
-        field_mapping[key] = {**value, "src": select_src(key, src_fields, value)}
-
-    cfg_access.write_field_mapping(args.target, field_mapping)
+    write_mapping(args, collection_info, wattro_api)
     print(
         f"Synchronisations Konfiguration für {args.target!r} mit Quelle {args.source!r} gespeichert."
     )
 
     return 0
+
+
+def write_mapping(
+    args: argparse.Namespace, collection_info: CollectionInfo, wattro_api: WattroNodeApi
+) -> None:
+    raw_fields = wattro_api.get_fields(TARGET_NODE_MAPPING[args.target])
+    field_mapping: dict[str, dict[str, None | int | str]] = {}
+    src_fields = collection_info.fields
+    for key, value in raw_fields.items():
+        if value.get("read_only", True):
+            logging.info("Überspringe 'read_path only' Feld %s; %s", key, value)
+            continue
+        if key == "human_id":
+            ident = collection_info.ident
+            logging.info(f"Setze 'human_id' auf {ident!r}")
+            field_mapping[key] = {**value, "src": _make_cfg_field(ident)}
+            continue
+        field_mapping[key] = {**value, "src": select_src(key, src_fields, value)}
+    cfg_access.write_field_mapping(args.target, field_mapping)
+
+
+def write_source_connection_and_get_info(
+    api_struct: ApiStructure, args: argparse.Namespace
+) -> CollectionInfo:
+    sync_info: SyncInfo
+    if api_struct.connection_info == SQLiteSyncInfo:
+        con_info = get_sqlite_connection_info()
+        collection_info = create_collection_info(api_struct.api, con_info)
+        sync_info = SQLiteSyncInfo(con_info, collection_info)
+    elif api_struct.connection_info == MosaikSyncInfo:
+        con_info = get_mosaik_connnection_info()
+        collection_info = create_collection_info(api_struct.api, con_info)
+        sync_info = MosaikSyncInfo(con_info, collection_info)
+    else:
+        raise NotImplementedError(f"TODO {api_struct}")
+    api = api_struct.api(sync_info)
+    if has_dup_idents(api, sync_info.collection_info):
+        raise KeyError("Not a valid identifier")
+    cfg_access.write_basic_connection(
+        args.target, connection_type=args.source, sync_info=sync_info
+    )
+    logging.info("Verbindungsdaten wurden gespeichert.")
+    return collection_info
+
+
+def retrive_cfg_and_wattro_api() -> tuple[SyncCfg, WattroNodeApi]:
+    cfg_existed = wattro_sync.file_access.read_write.exists("cfg")
+    cfg = wattro_sync.config_reader.access.get_or_create()
+    wattro_api = get_wattro_api_or_none(cfg)
+    if wattro_api is None:
+        raise ConnectionError("Failed to connect to wattor api.")
+    if not cfg_existed:
+        if select(
+            ["nein", "ja"], required=True, title="E-Mail Benachrichtigung einrichten?"
+        ):
+            setup_mail_cfg(cfg)
+    return cfg, wattro_api
 
 
 def select_src(key: str, src_fields: list[str], value: dict) -> str | None:
@@ -152,20 +173,53 @@ def get_wattro_api_or_none(cfg) -> WattroNodeApi | None:
     return wattro_api
 
 
-def setup_sqlite() -> SQLiteSyncInfo:
+def get_mosaik_connnection_info() -> str:
+    server_path = input("Server Pfad (z.B. SERVERNAME\\SQLMOSER):\t")
+    con_info = MosaikConInfo(server_path).to_connection_str()
+    return con_info
+
+
+def get_sqlite_connection_info() -> str:
     while True:
-        db_path_str = input("Pfad zur Datenbank Datei (z.B. 'db.sqlite3'):\t")
-        db_path = pathlib.Path(db_path_str).resolve()
-        if db_path.is_file():
-            break
-        logging.error(" '%s' muss ein Pfad zu einer gültigen Datei sein.", db_path)
-    table_options = sorted(SQLiteApi.get_collections(db_path))
+        db_path_str = input("Pfad zur Datenbank Datei (z.B. /path/to/db.sqlite3):\t")
+        connection_info = pathlib.Path(db_path_str).resolve()
+        if connection_info.is_file():
+            return db_path_str
+        logging.error(
+            " '%s' muss ein Pfad zu einer gültigen Datei sein.", connection_info
+        )
+
+
+def has_dup_idents(api: SrcCli, collection_info: CollectionInfo) -> bool:
+    res = api.get_new([])
+    known_identifiers: dict[str, list[dict]] = dict()
+    dups = list()
+    for data in res:
+        ident = data[collection_info.ident]
+        if ident in known_identifiers:
+            dups.append(ident)
+            known_identifiers[ident].append(data)
+        else:
+            known_identifiers[ident] = [data]
+    if not dups:
+        return False
+
+    for dup in dups:
+        logging.error("%s ist nicht eindeutig: %s", collection_info.ident, dup)
+        for dat in known_identifiers[dup]:
+            logging.info("\t%s", dat)
+    return True
+
+
+def create_collection_info(
+    api: typing.Type[SrcCli], connection_info: typing.Any
+) -> CollectionInfo:
+    table_options = api.get_collections(connection_info)
     table_id = select(
         table_options, required=True, title="Quelltabelle (Enter zum Auswählen)"
     )
     table_name = table_options[table_id]
-
-    field_options, field_samples = SQLiteApi.get_fields(db_path, table_name)
+    field_options, field_samples = api.get_fields(connection_info, table_name)
     field_ids = multi_select(
         field_options,
         required=True,
@@ -175,7 +229,6 @@ def setup_sqlite() -> SQLiteSyncInfo:
             [str(x) for x in field_samples[field_name]]
         ),
     )
-
     field_choices = [
         field for idx, field in enumerate(field_options) if idx in field_ids
     ]
@@ -186,30 +239,8 @@ def setup_sqlite() -> SQLiteSyncInfo:
             title="Primärschlüssel (Feld, welches den Datensatz eindeutig identifiziert)",
         )
     ]
-
-    sync_info = SQLiteSyncInfo(
-        db_path, CollectionInfo(table_name, field_choices, identifier)
-    )
-
-    api = SQLiteApi(sync_info)
-    res = api.get_new([])
-    known_identifiers: dict[str, list[dict]] = dict()
-    dups = list()
-    for data in res:
-        ident = data[identifier]
-        if ident in known_identifiers:
-            dups.append(ident)
-            known_identifiers[ident].append(data)
-        else:
-            known_identifiers[ident] = [data]
-
-    if dups:
-        for dup in dups:
-            logging.error("Ambigious Identifier: %s", dup)
-            for dat in known_identifiers[dup]:
-                logging.info("\t%s", dat)
-        raise RuntimeError(f"{len(dups)} ambigious identifiers: {dups}.")
-    return sync_info
+    collection_info = CollectionInfo(table_name, field_choices, identifier)
+    return collection_info
 
 
 def setup_mail_cfg(cfg: SyncCfg) -> None:
@@ -249,7 +280,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("target", help="Daten Ziel", choices=TARGET_NODE_MAPPING.keys())
     parser.add_argument("source", help="Quellsystem", choices=SOURCE_CHOICES)
 
-    parser.add_argument("-v", help="Setzt das Loglevel auf 'info'", action="store_true")
     return parser.parse_args()
 
 

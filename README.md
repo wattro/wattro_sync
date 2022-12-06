@@ -39,8 +39,8 @@ Nur gültige Werte werden in die Konfigurationsdatei geschrieben.
 Um Informationen zum Erfolg der Synchornisation zu bekommen, können Mails verschickt
 werden.
 Das "log_level" entspricht dabei einem numerischen Wert nach
-dem [Python Log Level Schema](https://docs.python.org/3/library/logging.html#logging-levels)
-.
+dem [Python Log Level Schema.](https://docs.python.org/3/library/logging.html#logging-levels)
+
 Insbesondere:
 
 | Level | numerischer Wert | Mail wird versendet bei...  |
@@ -72,6 +72,7 @@ bandit -r wattro_sync -c bandit.yaml -q
 ```
 
 ## Build
+
 ```bash
 # requires build and twine to be installed (via pip)
 python -m build

@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import dataclasses
-import pathlib
 import sqlite3
 
 from .src_cli import SrcCli, DBRes, CollectionInfo, SyncInfo
 
 
 class SQLiteSyncInfo(SyncInfo):
-    db_path: pathlib.Path
+    db_path: str
     collection_info: CollectionInfo
 
-    def __init__(self, db_path: pathlib.Path, collection_info: CollectionInfo):
+    def __init__(self, db_path: str, collection_info: CollectionInfo):
         self.db_path = db_path
         self.collection_info = collection_info
 
@@ -24,7 +23,7 @@ class SQLiteSyncInfo(SyncInfo):
     @classmethod
     def from_dict(cls, info: dict) -> SQLiteSyncInfo:
         return cls(
-            db_path=pathlib.Path(info["db_path"]),
+            db_path=info["db_path"],
             collection_info=CollectionInfo(**info["collection_info"]),
         )
 
@@ -36,7 +35,7 @@ class SQLiteApi(SrcCli):
 
     @classmethod
     def get_fields(
-        cls, connection_info: pathlib.Path, collection: str
+        cls, connection_info: str, collection: str
     ) -> tuple[list[str], dict[str, list]]:
         fake_api = cls(SQLiteSyncInfo(connection_info, CollectionInfo.empty()))
         meta_info = fake_api._exec(f"PRAGMA table_info({collection})")
@@ -50,7 +49,7 @@ class SQLiteApi(SrcCli):
         return field_names, sample_values
 
     @classmethod
-    def get_collections(cls, connection_info: pathlib.Path) -> list[str]:
+    def get_collections(cls, connection_info: str) -> list[str]:
         """
         get_collections('/path/to/db')
         """
@@ -60,7 +59,7 @@ class SQLiteApi(SrcCli):
             )
         )
         db_res = fake_api._exec(f"PRAGMA table_list")
-        return [x["name"] for x in db_res]
+        return sorted([x["name"] for x in db_res])
 
     def _exec(self, qry: str, params=None) -> DBRes:
         cnxn = sqlite3.connect(self.db_path)

@@ -6,7 +6,7 @@ import pathlib
 
 from .types import WattroCfg, ConnectionStructure, SyncCfg, MailCfg, ConfigDegenerated
 from ..api.api_mapping import ApiNameToStructureMapping, ApiStructure
-from ..api.sqlite_api import SQLiteSyncInfo
+from ..api.src_cli import SyncInfo
 from ..file_access.read_write import (
     CON_TYPE_KEY,
     CON_INFO_KEY,
@@ -58,7 +58,7 @@ def extract_mail_cfg(cfg: dict) -> MailCfg | None:
 
 
 def write_basic_connection(
-    target: str, connection_type: str, sync_info: SQLiteSyncInfo
+    target: str, connection_type: str, sync_info: SyncInfo
 ) -> None:
     cfg_update(target, CON_TYPE_KEY, connection_type)
     cfg_update(target, CON_INFO_KEY, sync_info.asdict())

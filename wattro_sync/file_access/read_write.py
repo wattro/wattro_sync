@@ -39,7 +39,7 @@ def write_path(file_path: pathlib.Path, val: typing.Any, pretty: bool = False) -
         logging.info("Overwriting exsiting file %s", file_path)
     txt = ""
     if pretty:
-        txt = json.dumps(val, ident=4, sort_keys=True)
+        txt = json.dumps(val, indent=4, sort_keys=True)
     else:
         txt = json.dumps(val)
     file_path.write_text(txt)
@@ -80,7 +80,7 @@ def update(file_type: ShortType, target: str, key: str, val: typing.Any) -> None
     else:
         file_dict[target] = {}
     file_dict[target].update({key: val})
-    write_path(file_p, file_dict, pretty=(file_type == "asset"))
+    write_path(file_p, file_dict, pretty=(file_type == "cfg"))
 
 
 def hist_update(target: str, key: str, val: typing.Any) -> None:

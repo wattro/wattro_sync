@@ -269,11 +269,15 @@ def get_date(field_map: dict, field_name: str, src: dict, src_str: str) -> int |
 
     if not isinstance(max_length, int):
         raise ConfigDegenerated(f"max_length not a number {max_length=} {field_name=}")
-    if len(new_date) <= max_length:
-        return new_date
-    shortened = new_date[:max_length]
+
+    oneline = new_date.strip().replace("\r", "").replace("\n", " | ")
+
+    if len(oneline) <= max_length:
+        return oneline
+
+    shortened = f"{oneline[:max_length - 3]}..."
     logging.info(
-        "Eingabe für %s zu groß. Kürze %s zu %s", field_name, new_date, shortened
+        "Eingabe für %r zu groß. Kürze %r ----> %r", field_name, new_date, shortened
     )
     return shortened
 
