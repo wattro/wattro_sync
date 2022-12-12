@@ -9,12 +9,12 @@ import typing
 from wattro_sync.config_reader.types import ConfigDegenerated
 
 BASE_FOLDER = ".wattro_sync"
-FILE_NAMES = ["cfg.json", "history.json", "mail.json"]
+FILE_NAMES = ["cfg.json", "history.json"]
 CON_TYPE_KEY = "connection_type"
 CON_INFO_KEY = "connection_info"
 FIELD_MAP_KEY = "field_mapping"
 
-ShortType = typing.Literal["cfg", "history", "mail"]
+ShortType = typing.Literal["cfg", "history"]
 
 
 def exists(file_type: ShortType) -> bool:
