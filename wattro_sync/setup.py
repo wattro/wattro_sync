@@ -175,7 +175,8 @@ def get_wattro_api_or_none(cfg) -> WattroNodeApi | None:
 
 def get_mosaik_connnection_info() -> str:
     server_path = input("Server Pfad (z.B. SERVERNAME\\SQLMOSER):\t")
-    con_info = MosaikConInfo(server_path).to_connection_str()
+    db = input("Datenbank Name (z.B. Mosaik):\t")
+    con_info = MosaikConInfo(Server=server_path, Database=db).to_connection_str()
     return con_info
 
 

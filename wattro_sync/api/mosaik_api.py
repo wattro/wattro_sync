@@ -1,14 +1,14 @@
 import dataclasses
-from typing import Any
+from typing import Any, Sequence
 
 from wattro_sync.api.odbc_api import OdbcSyncInfo, OdbcSrcCliAltSample
-from wattro_sync.api.src_cli import CollectionInfo
+from wattro_sync.api.src_cli import CollectionInfo, DBRes
 
 
 @dataclasses.dataclass
 class MosaikConInfo:
     Server: str
-    Database: str = "Mosaik"
+    Database: str
     Trusted_Connection: str = "Yes"
     Driver: str = "{SQL Server}"
 
@@ -21,6 +21,8 @@ class MosaikSyncInfo(OdbcSyncInfo):
 
 
 class MosaikApi(OdbcSrcCliAltSample):
+    MAX_SQL_TOKENS = 2_000
+
     @classmethod
     def get_collections(cls, connection_info: Any) -> list[str]:
         fake_api = cls(
@@ -56,3 +58,17 @@ class MosaikApi(OdbcSrcCliAltSample):
             field: val for field, val in zip(db_res.description, transposed_rows)
         }
         return field_names, sample_values
+
+    def get_new(self, known_idents: Sequence[str]) -> DBRes:
+        """
+        Get all entries on the CollectionInfo collection that are not identified by `known_idents`
+        This assumes that we are conntected to a view that sorts by changed date and is limited to the last 2k (or less)
+        """
+        return super().get_new(known_idents[: self.MAX_SQL_TOKENS])
+
+    def get_old(self, known_idents: Sequence[str]) -> DBRes:
+        """
+        The DB is limited to 2k SQL tokens, so we have to limit known idents.
+        This assumes that we are conntected to a view that sorts by changed date and is limited to the last 2k (or less)
+        """
+        return super().get_old(known_idents[: self.MAX_SQL_TOKENS])

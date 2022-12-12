@@ -1,7 +1,6 @@
-# Wattro Sync Helfer
+# Wattro Sync
 
-Scriptsammlung, um das Synchronisieren von Daten aus einer lokalen Quelle nach Wattro zu
-erleichtern.
+Ermöglicht es, Daten aus einer lokalen Quelle mit Wattro zu synchronisieren.
 
 ## Voraussetzung
 
@@ -12,27 +11,25 @@ erleichtern.
 
 * `pip install wattro-sync`
 
-## Anwendung
-
-Nach der Installation können die Scripte
-mit `python -m wattro_sync.[script_name] [Argumente]` aufgerufen werden.
-Etwa: `python -m wattro_sync.setup asset SQLite`
+## Einrichten
 
 ### Die zentrale Konfigurationsdatei
 
-Die Synchronisation beruht auf einer Konfigurationsdatei, welche mit `setup` erzeugt
-oder aktualisiert werden kann.
-Die Konfigurationsdatei kann auch von Hand angepasst werden.
-Mit `sync --dry` kann geprüft werden, ob die Synchronisation wie erwartet arbeitet.
+Die Synchronisation beruht auf einer Konfigurationsdatei, welche mit `python -m wattro_sync.setup ZIEL QUELLE` erzeugt
+oder aktualisiert werden kann (siehe `python -m wattro_sync.setup --help` für alle gültigen Optionen).
 
-`setup` erwartet zwei Argumente:
-
-* das Daten-Ziel (zum Beispiel 'asset': Geräte, die mit Wattro verwaltet werden)
-* der Daten Quelltyp (zum Beispiel 'Benning' für eine Benning Datenbank)
-
-Im Prozess werden je nach Ziel und Quelltyp verschiedene Eingaben abgefragt und die
+Im Prozess werden je nach Ziel- und Quelltyp verschiedene Eingaben abgefragt und die
 Datenverfügbarkeit geprüft.
 Nur gültige Werte werden in die Konfigurationsdatei geschrieben.
+
+*ACHTUNG* 
+
+Für Importe aus Mosaik muss aus technischen Gründen ein View angesporchen werden, welcher 
+* die Datensätze auf maximal 2k beschränkt und 
+* die Datensätze nach Änderungsdatum sortiert
+
+Die Konfigurationsdatei kann von Hand angepasst werden.
+Mit `python -m wattro_sync.sync --dry` kann geprüft werden, ob die Synchronisation wie erwartet arbeitet.
 
 #### Mail Infos
 
@@ -49,12 +46,10 @@ Insbesondere:
 | INFO  | 20               | Änderung von Datensätzen    |
 | DEBUG | 10               | Aufruf des Scripts          |
 
-### Synchronisation
+## Synchronisation
 
-Mit `sync` werden die Daten synchronisiert.
-Die Synchronisation kann auch eingeschränkt, verbos oder als dry run durchgeführt
-werden.
-`sync --help` für mehr.
+Mit `python -m wattro_sync.sync` werden die Daten synchronisiert.
+Siehe `python -m wattro_sync.sync --help` für mehr.
 
 # Development
 
