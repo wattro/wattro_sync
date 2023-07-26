@@ -62,14 +62,23 @@ class SQLiteApi(SrcCli):
         return sorted([x["name"] for x in db_res])
 
     def _exec(self, qry: str, params=None) -> DBRes:
-        cnxn = sqlite3.connect(self.db_path)
-        cursr = cnxn.cursor()
-        if params is None:
-            params = tuple()
-        rows = cursr.execute(qry, params).fetchall()
-        if not rows:
-            res = DBRes([], [])
-        else:
-            res = DBRes([n[0] for n in cursr.description], rows)
-        cnxn.close()
+        try:
+            cnxn = sqlite3.connect(self.db_path)
+        except Exception as err:
+            raise ConnectionError(f"Failed to open db at {self.db_path}") from err
+        try:
+            cursr = cnxn.cursor()
+            if params is None:
+                params = tuple()
+            rows = cursr.execute(qry, params).fetchall()
+            if not rows:
+                res = DBRes([], [])
+            else:
+                res = DBRes([n[0] for n in cursr.description], rows)
+        except Exception as err:
+            raise RuntimeError(
+                "Failed to execute {qry = !r} with {params = !r}"
+            ) from err
+        finally:
+            cnxn.close()
         return res

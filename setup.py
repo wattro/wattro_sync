@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="wattro_sync",
-    version="0.3.0",
+    version="0.3.1",
     description="Script collection to sync data from local sources to a wattro node",
     long_description=long_description,
     long_description_content_type="text/markdown",

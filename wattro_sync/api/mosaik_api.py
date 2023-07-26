@@ -32,7 +32,7 @@ class MosaikApi(OdbcSrcCliAltSample):
             )
         )
         db_res = fake_api._exec(
-            "SELECT name FROM SYSOBJECTS WHERE xtype='U' PO xtype='V';"
+            "SELECT name FROM SYSOBJECTS WHERE xtype='U' OR xtype='V';"
         )
         return sorted([x["name"] for x in db_res])
 

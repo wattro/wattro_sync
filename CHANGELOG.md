@@ -5,10 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## unreleased
+## 0.3.1
+
+### Fix
+
+* Typo when getting Mosaik Tables
+
+## 0.3.0
 
 ### Changed
 
+- Reduce input to Mosaik to what it can technically handle
 - Require input for Mosaik Setup: Database name
 
 ## 0.2.0

@@ -32,19 +32,30 @@ class OdbcSyncInfo(SyncInfo):
 class OdbcSrcCli(SrcCli, ABC):
     def __init__(self, sync_info: OdbcSyncInfo):
         self.collection_info = sync_info.collection_info
-        self.obdc_connection_str = sync_info.odbc_connection_str
+        self.odbc_connection_str = sync_info.odbc_connection_str
 
     def _exec(self, qry: str, params=None) -> DBRes:
-        cnxn = pyodbc.connect(self.obdc_connection_str)
-        cursor = cnxn.cursor()
-        if params is None:
-            params = tuple()
-        rows = cursor.execute(qry, params).fetchall()
-        if not rows:
-            res = DBRes([], [])
-        else:
-            res = DBRes([n[0] for n in cursor.description], rows)
-        cnxn.close()
+        try:
+            cnxn = pyodbc.connect(self.odbc_connection_str)
+        except Exception as err:
+            raise ConnectionError(
+                f"Failed to connect using {self.odbc_connection_str!r}"
+            ) from err
+        try:
+            cursor = cnxn.cursor()
+            if params is None:
+                params = tuple()
+            rows = cursor.execute(qry, params).fetchall()
+            if not rows:
+                res = DBRes([], [])
+            else:
+                res = DBRes([n[0] for n in cursor.description], rows)
+        except Exception as err:
+            raise RuntimeError(
+                f"Failed to execute {qry = !r} with {params = !r}"
+            ) from err
+        finally:
+            cnxn.close()
         return res
 
 
