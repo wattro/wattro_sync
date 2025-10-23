@@ -1,3 +1,14 @@
+
+--- Veraltet ---
+================
+
+Unterstützung der API Version bei Wattro wurde eingestellt. 
+Zum Stand Oktober 2025 bedeutet dies, dass das automatische Erstellen einer Konfiguration nicht mehr unterstützt wird.
+Gültige Konfigurationen können weiter benutzt werden.
+
+
+
+
 # Wattro Sync
 
 Ermöglicht es, Daten aus einer lokalen Quelle mit Wattro zu synchronisieren.
